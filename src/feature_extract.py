@@ -8,9 +8,6 @@ from nltk.corpus import words
 import sys
 import pickle
 
-DATA_FILE_EXT = ".eml"
-EXTENSION_LEN = 4
-
 def load_labels(label_path):
     label_file = open(label_path, "r")
     labels = [line.strip().split() for line in label_file]
@@ -25,10 +22,17 @@ def lowercase(text):
 def filter_dictionary(text, dictionary):
     return filter(lambda x: x in dictionary, text)
 
-def feature_extract(text, dictionary):
+def extract_words(text, dictionary):
     return filter_dictionary(lowercase(tokenize(text)), dictionary)
 
-if __name__ == "__main__":
+def calculate_tfidf(documents):
+    hashingTF = HashingTF()
+    tf = hashingTF.transform(documents.map(lambda x: x[1]))
+    tf.cache()
+    idf = IDF().fit(tf)
+    return idf.transform(tf)
+
+def raw_files_to_labeled_features(raw_files, label_file):
     # Initialize spark
     conf = SparkConf().setAppName("SpamFilter").setMaster("local[*]")
     sc = SparkContext(conf=conf)
@@ -37,36 +41,26 @@ if __name__ == "__main__":
     valid_words = set(w.lower() for w in words.words())
 
     # Load training data and convert to our desired format
-    raw_files = sc.wholeTextFiles(sys.argv[1])
-    words = raw_files.map(lambda x: (x[0], map(lambda x: x.lower(),word_tokenize(BeautifulSoup(x[1]).get_text()))))
+    raw_files = sc.wholeTextFiles(raw_files)
 
-    # Filter by the words we want to use as features
-    words_filtered = words.map(lambda x: (x[0],filter(lambda y: y in valid_words,x[1])))
-    #words_filtered = raw_files.map(lambda x: (x[0], feature_extract(x[1], valid_words)))
+    # Extract a document of filtered words from each text file
+    documents = raw_files.map(lambda x: (x[0], extract_words(x[1], valid_words)))
 
     # Calculate TF-IDF values for each document
-    hashingTF = HashingTF()
-    tf = hashingTF.transform(words_filtered.map(lambda x: x[1]))
-    tf.cache()
-    idf = IDF().fit(tf)
-    tfidf = idf.transform(tf)
+    tfidf = calculate_tfidf(documents)
 
-    # Add a constant feature for the weighting factor
-    #features = tfidf.map(lambda x: SparseVector(x.size + 1, map(lambda y: y + 1,x.indices), x.values))
+    # Load labels
+    labels = sc.parallelize(load_labels(label_file).map(lambda x: x[0])
 
-    #features2 = features.map(lambda x: SparseVector(x.size, [0] + x.indices, [1.0] + x.values))
+    # Append indexes to features and labels
+    indexed_labels = labels.zipWithIndex().map(lambda x: (x[1],x[0]))
+    indexed_features = tfidf.zipWithIndex().map(lambda x: (x[1],x[0]))
 
-    labels = sc.parallelize(load_labels(sys.argv[2])).map(lambda x: x[0])
+    # Join labels and features into tuples and return
+    return indexed_labels.join(indexed_features).map(lambda x: x[1]).collect()
 
-    i_labels = labels.zipWithIndex().map(lambda x: (x[1],x[0]))
-
-    #i_features = features2.zipWithIndex().map(lambda x: (x[1],x[0]))
-    i_features = tfidf.zipWithIndex().map(lambda x: (x[1],x[0]))
-
-    labeled_features = i_labels.join(i_features).map(lambda x: x[1]).collect()
-
-    #for i in range(10):
-    #    print(labeled_features[i])
+if __name__ == "__main__":
+    labeled_features = raw_files_to_labeled_features(sys.argv[1], sys.argv[2])
 
     output = open("./output.txt","w")
-    pickle.dump(labeled_features, output)
+    pickle.dump(labeled, output)
