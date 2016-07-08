@@ -50,7 +50,7 @@ def raw_files_to_labeled_features(raw_files, label_file):
     tfidf = calculate_tfidf(documents)
 
     # Load labels
-    labels = sc.parallelize(load_labels(label_file).map(lambda x: x[0])
+    labels = sc.parallelize(load_labels(label_file)).map(lambda x: x[0])
 
     # Append indexes to features and labels
     indexed_labels = labels.zipWithIndex().map(lambda x: (x[1],x[0]))
