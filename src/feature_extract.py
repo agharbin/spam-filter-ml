@@ -63,4 +63,4 @@ if __name__ == "__main__":
     labeled_features = raw_files_to_labeled_features(sys.argv[1], sys.argv[2])
 
     output = open("./output.txt","w")
-    pickle.dump(labeled, output)
+    pickle.dump(labeled_features, output)
