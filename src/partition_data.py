@@ -23,7 +23,7 @@ def partition(data):
 if __name__ == "__main__":
     data_file = open(sys.argv[1],"r")
     data = pickle.load(data_file)
-
+    
     cv_data, test_data, train_data = partition(data)
 
     cv_file = open("cross_validation_data.txt","w")
